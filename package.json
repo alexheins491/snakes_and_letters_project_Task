@@ -1,0 +1,24 @@
+{
+  "name": "snakes-and-ladders",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Core engine for a Snakes and Ladders board game (domain logic only, no UI).",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run typecheck && npm test",
+    "play": "tsx src/playground.ts",
+    "play:watch": "tsx watch src/playground.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.2.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
