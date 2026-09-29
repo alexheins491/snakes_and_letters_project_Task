@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { GameRules } from '../src/game_types/snakes-and-ladders.js'
 import { InvalidRollError, InvalidRulesError } from '../src/games/snakes-and-ladders/errors.js'
+import { NO_SNAKES_OR_LADDERS } from '../src/games/snakes-and-ladders/board-layouts.js'
 import { bounceBack } from '../src/games/snakes-and-ladders/movement-rules.js'
 import { STANDARD_RULES } from '../src/games/snakes-and-ladders/rules.js'
 import { SnakesAndLaddersGame } from '../src/games/snakes-and-ladders/snakes-and-ladders-game.js'
@@ -52,11 +53,14 @@ describe('Game rules are data, not code', () => {
   })
 
   it('with no die given, the default die matches the rules’ dieSides', () => {
-    const game = new SnakesAndLaddersGame([PLAYER_1, PLAYER_2], { rules: rulesWith({ dieSides: 4, lastSquare: 1000 }) })
+    const game = new SnakesAndLaddersGame([PLAYER_1, PLAYER_2], {
+      rules: rulesWith({ dieSides: 4, lastSquare: 1000 }),
+      board: NO_SNAKES_OR_LADDERS,
+    })
 
     // Before, the default die was always 6-sided, so this threw on a 5 or 6.
     for (let turn = 0; turn < 200; turn++) {
-      expect(game.takeTurn(game.currentPlayer)).toBeLessThanOrEqual(4)
+      expect(game.takeTurn(game.currentPlayer).roll).toBeLessThanOrEqual(4)
     }
   })
 
@@ -73,6 +77,19 @@ describe('Game rules are data, not code', () => {
 
     expect(game.getPlayerPosition(PLAYER_1)).toBe(7)
     expect(game.winner).toBeNull()
+  })
+})
+
+describe('The standard rules cannot be changed at runtime', () => {
+  // `readonly` is only checked by TypeScript; Object.freeze is what stops this
+  // once the code is running.
+  it('throws if anything tries to change them, and they stay the same', () => {
+    const rules = STANDARD_RULES as { lastSquare: number }
+
+    expect(() => {
+      rules.lastSquare = 5
+    }).toThrow(TypeError)
+    expect(STANDARD_RULES.lastSquare).toBe(100)
   })
 })
 

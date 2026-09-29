@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { NO_SNAKES_OR_LADDERS } from '../src/games/snakes-and-ladders/board-layouts.js'
 import { sixSidedDie } from '../src/games/snakes-and-ladders/dice.js'
 import { InvalidRollError, UnknownPlayerError } from '../src/games/snakes-and-ladders/errors.js'
 import { SnakesAndLaddersGame } from '../src/games/snakes-and-ladders/snakes-and-ladders-game.js'
@@ -57,13 +58,13 @@ describe('Feature 1: guard rails', () => {
 })
 
 describe('Feature 1: the die', () => {
-  it('takeTurn rolls the game’s die, applies it, and returns the value rolled', () => {
+  it('takeTurn rolls the game’s die, applies it, and returns the move', () => {
     // A die that always shows 4, so the outcome is predictable.
-    const game = new SnakesAndLaddersGame([PLAYER_1, PLAYER_2], { die: () => 4 })
+    const game = new SnakesAndLaddersGame([PLAYER_1, PLAYER_2], { die: () => 4, board: NO_SNAKES_OR_LADDERS })
 
-    const rolled = game.takeTurn(PLAYER_1)
+    const move = game.takeTurn(PLAYER_1)
 
-    expect(rolled).toBe(4)
+    expect(move).toEqual({ player: PLAYER_1, roll: 4, from: 1, landedOn: 5, to: 5 })
     expect(game.getPlayerPosition(PLAYER_1)).toBe(5)
     expect(game.currentPlayer).toBe(PLAYER_2)
   })
@@ -78,10 +79,10 @@ describe('Feature 1: the die', () => {
   })
 
   it('a game with no die given plays with a working default die', () => {
-    const game = new SnakesAndLaddersGame([PLAYER_1, PLAYER_2])
+    const game = new SnakesAndLaddersGame([PLAYER_1, PLAYER_2], { board: NO_SNAKES_OR_LADDERS })
 
-    const rolled = game.takeTurn(PLAYER_1)
+    const { roll } = game.takeTurn(PLAYER_1)
 
-    expect(game.getPlayerPosition(PLAYER_1)).toBe(1 + rolled)
+    expect(game.getPlayerPosition(PLAYER_1)).toBe(1 + roll)
   })
 })

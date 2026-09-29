@@ -59,3 +59,11 @@ export class InvalidGameStateError extends SnakesAndLaddersError {
     this.name = "InvalidGameStateError";
   }
 }
+
+/** A board layout can't be played on: a snake goes up, two share a square, one is off the board, etc. */
+export class InvalidBoardError extends SnakesAndLaddersError {
+  constructor(reason: string) {
+    super(reason);
+    this.name = "InvalidBoardError";
+  }
+}

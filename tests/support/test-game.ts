@@ -1,4 +1,5 @@
-import type { Die, GameRules } from '../../src/game_types/snakes-and-ladders.js'
+import type { BoardLayout, Die, GameRules, Move, RandomSource } from '../../src/game_types/snakes-and-ladders.js'
+import { NO_SNAKES_OR_LADDERS } from '../../src/games/snakes-and-ladders/board-layouts.js'
 import { SnakesAndLaddersGame } from '../../src/games/snakes-and-ladders/snakes-and-ladders-game.js'
 
 export const PLAYER_1 = 'Player 1'
@@ -27,15 +28,37 @@ export class LoadedDie {
 /**
  * A game plus `roll(player, value)`: load the die with `value`, then have
  * `player` take their turn. Reads like the brief: `roll(PLAYER_1, 4)`.
+ *
+ * The board is empty unless one is given, so a test only meets a snake or
+ * ladder it put there itself.
  */
-export function testGame(players: readonly string[] = [PLAYER_1, PLAYER_2], rules?: GameRules) {
+export function testGame(
+  players: readonly string[] = [PLAYER_1, PLAYER_2],
+  rules?: GameRules,
+  board: BoardLayout = NO_SNAKES_OR_LADDERS,
+) {
   const dice = new LoadedDie()
-  const game = new SnakesAndLaddersGame(players, rules ? { die: dice.roll, rules } : { die: dice.roll })
+  const game = new SnakesAndLaddersGame(players, { die: dice.roll, board, ...(rules ? { rules } : {}) })
 
-  const roll = (player: string, value: number): number => {
+  const roll = (player: string, value: number): Move => {
     dice.willRoll(value)
     return game.takeTurn(player)
   }
 
   return { game, dice, roll }
+}
+
+/**
+ * A random source that gives the same numbers every run for the same seed
+ * (mulberry32), so tests of random layouts are repeatable.
+ */
+export function seededRandom(seed: number): RandomSource {
+  let state = seed >>> 0
+  return () => {
+    state = (state + 0x6d2b79f5) >>> 0
+    let t = state
+    t = Math.imul(t ^ (t >>> 15), t | 1)
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
 }

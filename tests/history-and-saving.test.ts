@@ -25,8 +25,8 @@ describe('Move history', () => {
     const { game } = playedGame()
 
     expect(game.history).toEqual([
-      { player: PLAYER_1, roll: 4, from: 1, to: 5 },
-      { player: PLAYER_2, roll: 2, from: 1, to: 3 },
+      { player: PLAYER_1, roll: 4, from: 1, landedOn: 5, to: 5 },
+      { player: PLAYER_2, roll: 2, from: 1, landedOn: 3, to: 3 },
     ])
   })
 
@@ -50,13 +50,14 @@ describe('Saving and loading a game', () => {
 
     expect(throughJson(game.toState())).toEqual({
       rulesId: 'standard',
+      board: { snakes: [], ladders: [] },
       players: [PLAYER_1, PLAYER_2],
       positions: { [PLAYER_1]: 5, [PLAYER_2]: 3 },
       currentPlayer: PLAYER_1,
       winner: null,
       history: [
-        { player: PLAYER_1, roll: 4, from: 1, to: 5 },
-        { player: PLAYER_2, roll: 2, from: 1, to: 3 },
+        { player: PLAYER_1, roll: 4, from: 1, landedOn: 5, to: 5 },
+        { player: PLAYER_2, roll: 2, from: 1, landedOn: 3, to: 3 },
       ],
     })
   })
@@ -97,7 +98,7 @@ describe('Saving and loading a game', () => {
 
   it('refuses a save whose history is impossible', () => {
     const state = playedGame().game.toState()
-    const edited = { ...state, history: [{ player: PLAYER_1, roll: 4, from: 1, to: 50 }, state.history[1]!] }
+    const edited = { ...state, history: [{ player: PLAYER_1, roll: 4, from: 1, landedOn: 5, to: 50 }, state.history[1]!] }
 
     expect(() => SnakesAndLaddersGame.fromState(edited)).toThrow(InvalidGameStateError)
   })

@@ -7,10 +7,13 @@
  *
  * Not part of the engine. It only *reads* the SnakesAndLadders API, so if you
  * rename something in the engine, fix it here too.
+ *
+ * Every run gets a new random board, so the snakes and ladders move each time.
  */
 
 import { createInterface } from 'node:readline/promises'
 import { stdin, stdout } from 'node:process'
+import type { BoardLayout } from './game_types/snakes-and-ladders.js'
 import { sixSidedDie } from './games/snakes-and-ladders/dice.js'
 import { SnakesAndLaddersGame } from './games/snakes-and-ladders/snakes-and-ladders-game.js'
 
@@ -31,8 +34,14 @@ const PLAYER_COLOURS = [c.cyan, c.yellow, c.green, c.red]
 
 // ── printing ────────────────────────────────────────────────────────────────
 
-/** Render the 10x10 board boustrophedon-style, square 1 bottom-left. */
-function renderBoard(positions: ReadonlyMap<string, number>): string {
+/**
+ * Render the 10x10 board boustrophedon-style, square 1 bottom-left.
+ * Snake heads are red, ladder bottoms are green.
+ */
+function renderBoard(positions: ReadonlyMap<string, number>, board: BoardLayout): string {
+  const snakeHeads = new Set(board.snakes.map((snake) => snake.head))
+  const ladderBottoms = new Set(board.ladders.map((ladder) => ladder.bottom))
+
   const occupants = new Map<number, string[]>()
   for (const [player, square] of positions) {
     const list = occupants.get(square) ?? []
@@ -49,7 +58,12 @@ function renderBoard(positions: ReadonlyMap<string, number>): string {
 
     const cells = squares.map((n) => {
       const here = occupants.get(n)
-      if (!here || here.length === 0) return c.dim(String(n).padStart(3, ' ') + ' ')
+      const label = String(n).padStart(3, ' ') + ' '
+      if (!here || here.length === 0) {
+        if (snakeHeads.has(n)) return c.red(label)
+        if (ladderBottoms.has(n)) return c.green(label)
+        return c.dim(label)
+      }
       return c.bold(here.join('').padStart(3, ' ') + ' ')
     })
 
@@ -63,7 +77,7 @@ function printState(game: SnakesAndLaddersGame, label: string): void {
 
   console.log()
   console.log(c.bold(label))
-  console.log(renderBoard(positions))
+  console.log(renderBoard(positions, game.board))
   console.log()
 
   const summary = [...positions]
@@ -74,9 +88,25 @@ function printState(game: SnakesAndLaddersGame, label: string): void {
     .join('   ')
   console.log('  ' + summary)
 
+  const lastMove = game.history.at(-1)
+  if (lastMove && lastMove.to > lastMove.landedOn) {
+    console.log('  ' + c.green(`🪜 climbed a ladder: ${lastMove.landedOn} → ${lastMove.to}`))
+  }
+  if (lastMove && lastMove.to < lastMove.landedOn) {
+    console.log('  ' + c.red(`🐍 slid down a snake: ${lastMove.landedOn} → ${lastMove.to}`))
+  }
+
   if (game.winner) console.log('  ' + c.green(`🏆 ${game.winner} wins!`))
   else console.log('  ' + c.dim(`next to play: ${game.currentPlayer}`))
   console.log()
+}
+
+function printBoardKey(board: BoardLayout): void {
+  const ladders = board.ladders.map((ladder) => `${ladder.bottom}→${ladder.top}`).join('  ')
+  const snakes = board.snakes.map((snake) => `${snake.head}→${snake.tail}`).join('  ')
+  console.log()
+  console.log('  ' + c.green('🪜 ladders: ') + ladders)
+  console.log('  ' + c.red('🐍 snakes:  ') + snakes)
 }
 
 // ── modes ───────────────────────────────────────────────────────────────────
@@ -87,12 +117,13 @@ function runScripted(): void {
   // The game rolls its own die, so give it one that rolls the script in order.
   const script = SCRIPTED_ROLLS[Symbol.iterator]()
   const game = new SnakesAndLaddersGame(PLAYERS, { die: () => script.next().value ?? 1 })
+  printBoardKey(game.board)
   printState(game, 'Fresh game')
 
   for (let i = 0; i < SCRIPTED_ROLLS.length && !game.winner; i++) {
     const player = game.currentPlayer
-    const value = game.takeTurn(player)
-    printState(game, `${player} rolled a ${value}`)
+    const move = game.takeTurn(player)
+    printState(game, `${player} rolled a ${move.roll}`)
   }
 
   console.log(c.dim('  (edit SCRIPTED_ROLLS in src/playground.ts, or run `npm run play -- -i`)'))
@@ -104,6 +135,7 @@ async function runInteractive(): Promise<void> {
   const game = new SnakesAndLaddersGame(PLAYERS, { die: () => typedValue })
   const rl = createInterface({ input: stdin, output: stdout })
 
+  printBoardKey(game.board)
   printState(game, 'Fresh game')
   console.log(c.dim('  type 1-6 to roll that value · `r` for a random roll · `q` to quit'))
 

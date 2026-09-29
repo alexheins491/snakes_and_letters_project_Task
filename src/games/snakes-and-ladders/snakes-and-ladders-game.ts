@@ -1,14 +1,19 @@
 import type {
+  BoardLayout,
   Die,
   GameOptions,
   GameRules,
   GameState,
+  LoadOptions,
   Move,
   SnakesAndLadders,
 } from '../../game_types/snakes-and-ladders.js';
+import { randomBoardLayout } from './board-layouts.js';
+import { Board, START_SQUARE } from './board.js';
 import { fairDie } from './dice.js';
 import {
   GameOverError,
+  InvalidBoardError,
   InvalidGameStateError,
   InvalidPlayersError,
   InvalidRollError,
@@ -18,8 +23,6 @@ import {
 } from './errors.js';
 import { STANDARD_RULES } from './rules.js';
 
-const START_SQUARE = 1;
-
 /**
  * The game: who is playing, where they are, whose turn it is, and who has won.
  *
@@ -28,13 +31,15 @@ const START_SQUARE = 1;
  * player's turn and rolls the game's own die, so a caller can neither act out of
  * turn nor choose the number rolled. Everything that could vary between variants
  * of the game (board length, die, movement rule) comes in as `rules`, so this
- * class never changes to support a variant.
+ * class never changes to support a variant. Where the snakes and ladders are
+ * comes in as a `board` layout, random unless one is given.
  */
 export class SnakesAndLaddersGame implements SnakesAndLadders {
   private readonly positions = new Map<string, number>();
   private readonly turnOrder: readonly string[];
   private readonly rules: GameRules;
   private readonly die: Die;
+  private readonly _board: Board;
   private readonly moves: Move[] = [];
   private currentTurnIndex = 0;
   private _winner: string | null = null;
@@ -46,6 +51,8 @@ export class SnakesAndLaddersGame implements SnakesAndLadders {
 
     // The default die follows the rules, so a 4-sided rule set gets a 4-sided die.
     this.die = options.die ?? fairDie(this.rules.dieSides);
+    // No layout given means a new random one, so every game is different.
+    this._board = new Board(options.board ?? randomBoardLayout(this.rules), this.rules.lastSquare);
     this.turnOrder = [...playerNames];
 
     // Every player starts on square 1.
@@ -58,27 +65,39 @@ export class SnakesAndLaddersGame implements SnakesAndLadders {
    * Rebuilds a saved game by replaying its history, then checks the result
    * matches what was saved. Pass the same rules (and die, if not the default)
    * the game was created with; functions can't be stored, so only `rulesId` is saved.
+   * The board is plain data, so it is saved in full and always comes from `state`.
    */
-  static fromState(state: GameState, options: GameOptions = {}): SnakesAndLaddersGame {
+  static fromState(state: GameState, options: LoadOptions = {}): SnakesAndLaddersGame {
     const rules = options.rules ?? STANDARD_RULES;
     if (state.rulesId !== rules.id) {
       throw new InvalidGameStateError(`Game was saved with rules "${state.rulesId}", not "${rules.id}".`);
     }
 
-    const game = new SnakesAndLaddersGame(state.players, options);
+    let game: SnakesAndLaddersGame;
+    try {
+      game = new SnakesAndLaddersGame(state.players, { ...options, board: state.board });
+    } catch (error) {
+      if (error instanceof InvalidBoardError) {
+        throw new InvalidGameStateError(`Saved board can't be used: ${error.message}`);
+      }
+      throw error;
+    }
 
     for (const [i, move] of state.history.entries()) {
       const expectedFrom = game.positions.get(move.player);
       if (game._winner !== null || move.player !== game.currentPlayer || move.from !== expectedFrom) {
         throw new InvalidGameStateError(`History entry ${i} is not a legal next move.`);
       }
+      let replayed: Move;
       try {
-        game.applyRoll(move.roll);
+        replayed = game.applyRoll(move.roll);
       } catch (error) {
         throw new InvalidGameStateError(`History entry ${i} can't be replayed: ${(error as Error).message}`);
       }
-      if (game.positions.get(move.player) !== move.to) {
-        throw new InvalidGameStateError(`History entry ${i} says square ${move.to}, but the rules give a different square.`);
+      if (replayed.landedOn !== move.landedOn || replayed.to !== move.to) {
+        throw new InvalidGameStateError(
+          `History entry ${i} says ${move.landedOn} → ${move.to}, but the rules and board give ${replayed.landedOn} → ${replayed.to}.`,
+        );
       }
     }
 
@@ -102,6 +121,10 @@ export class SnakesAndLaddersGame implements SnakesAndLadders {
     return this._winner;
   }
 
+  get board(): BoardLayout {
+    return this._board.layout;
+  }
+
   get history(): readonly Move[] {
     return [...this.moves];
   }
@@ -114,7 +137,7 @@ export class SnakesAndLaddersGame implements SnakesAndLadders {
     return position;
   }
 
-  takeTurn(playerName: string): number {
+  takeTurn(playerName: string): Move {
     if (this._winner !== null) {
       throw new GameOverError(this._winner);
     }
@@ -123,14 +146,13 @@ export class SnakesAndLaddersGame implements SnakesAndLadders {
       throw new NotYourTurnError(playerName, this.currentPlayer);
     }
 
-    const dieValue = this.die();
-    this.applyRoll(dieValue);
-    return dieValue;
+    return this.applyRoll(this.die());
   }
 
   toState(): GameState {
     return {
       rulesId: this.rules.id,
+      board: this._board.layout,
       players: [...this.turnOrder],
       positions: Object.fromEntries(this.positions),
       currentPlayer: this.currentPlayer,
@@ -139,30 +161,38 @@ export class SnakesAndLaddersGame implements SnakesAndLadders {
     };
   }
 
-  /** Moves the current player by `dieValue`. Checks everything before changing anything. */
-  private applyRoll(dieValue: number): void {
+  /**
+   * Moves the current player by `dieValue` and returns the move it recorded.
+   * Checks everything before changing anything.
+   */
+  private applyRoll(dieValue: number): Move {
     if (!Number.isInteger(dieValue) || dieValue < 1 || dieValue > this.rules.dieSides) {
       throw new InvalidRollError(dieValue, this.rules.dieSides);
     }
 
     const player = this.currentPlayer;
     const from = this.getPlayerPosition(player);
-    const to = this.rules.movement(from, dieValue, this.rules.lastSquare);
+    const landedOn = this.rules.movement(from, dieValue, this.rules.lastSquare);
 
     // A custom movement rule is outside code; don't let it put a player off the board.
-    if (!Number.isInteger(to) || to < START_SQUARE || to > this.rules.lastSquare) {
-      throw new InvalidRulesError(`Movement rule returned square ${to}, which is not on the board.`);
+    if (!Number.isInteger(landedOn) || landedOn < START_SQUARE || landedOn > this.rules.lastSquare) {
+      throw new InvalidRulesError(`Movement rule returned square ${landedOn}, which is not on the board.`);
     }
 
+    // Then any snake or ladder on that square takes the player to its other end.
+    const to = this._board.destinationOf(landedOn);
+
+    const move: Move = Object.freeze({ player, roll: dieValue, from, landedOn, to });
     this.positions.set(player, to);
-    this.moves.push(Object.freeze({ player, roll: dieValue, from, to }));
+    this.moves.push(move);
 
     if (to === this.rules.lastSquare) {
-      this._winner = player;
-      return; // The winner keeps the turn; the game is over.
+      this._winner = player; // The winner keeps the turn; the game is over.
+    } else {
+      this.currentTurnIndex = (this.currentTurnIndex + 1) % this.turnOrder.length;
     }
 
-    this.currentTurnIndex = (this.currentTurnIndex + 1) % this.turnOrder.length;
+    return move;
   }
 }
 
