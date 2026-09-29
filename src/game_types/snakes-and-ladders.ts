@@ -106,7 +106,7 @@ export interface SnakesAndLadders {
   /** Every turn taken so far, oldest first. */
   readonly history: readonly Move[];
   getPlayerPosition(playerName: string): number;
-  /** `playerName` rolls this game's die and moves. Returns the value rolled. */
-  takeTurn(playerName: string): number;
+  /** `playerName` rolls this game's die and moves. Returns the move: roll, squares, and any snake or ladder. */
+  takeTurn(playerName: string): Move;
   toState(): GameState;
 }
